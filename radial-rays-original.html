@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radial Rays 3D</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #0a0a0c;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #rays-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+  #rays-canvas:active {
+    cursor: grabbing;
+  }
+  .hint {
+    position: absolute;
+    top: 16px;
+    left: 20px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    pointer-events: none;
+    user-select: none;
+  }
+  .controls {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    right: 20px;
+    max-width: 360px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(8px);
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .controls label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+  }
+  .controls input[type="range"] {
+    flex: 1;
+  }
+  .controls span {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    min-width: 34px;
+    text-align: right;
+  }
+  .credit {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    text-align: right;
+    pointer-events: none;
+    user-select: none;
+  }
+  .credit .quote {
+    font-size: 12px;
+    font-style: italic;
+    color: rgba(255,255,255,0.5);
+    margin: 0 0 4px;
+    max-width: 220px;
+  }
+  .credit .byline {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="rays-canvas"></canvas>
+<div class="hint">drag to rotate · scroll to zoom</div>
+<div class="controls">
+  <label for="ray-count">Rays</label>
+  <input type="range" min="8" max="400" value="120" step="1" id="ray-count" />
+  <span id="ray-count-out">120</span>
+</div>
+<div class="credit">
+  <p class="quote">"Singularity, expressed."</p>
+  <p class="byline">Made by Zia</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const canvas = document.getElementById('rays-canvas');
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 12);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Center point
+  const centerGeo = new THREE.SphereGeometry(0.12, 24, 24);
+  const centerMat = new THREE.MeshBasicMaterial({ color: 0x4da3ff });
+  const centerPoint = new THREE.Mesh(centerGeo, centerMat);
+  scene.add(centerPoint);
+
+  const rayGroup = new THREE.Group();
+  scene.add(rayGroup);
+
+  function buildRays(count) {
+    while (rayGroup.children.length) {
+      const c = rayGroup.children.pop();
+      c.geometry.dispose();
+      c.material.dispose();
+    }
+    const length = 6;
+    for (let i = 0; i < count; i++) {
+      // Fibonacci sphere for even distribution
+      const y = 1 - (i / (count - 1)) * 2;
+      const radiusAtY = Math.sqrt(1 - y * y);
+      const theta = Math.PI * (3 - Math.sqrt(5)) * i;
+      const x = Math.cos(theta) * radiusAtY;
+      const z = Math.sin(theta) * radiusAtY;
+
+      const dir = new THREE.Vector3(x, y, z);
+      const points = [new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(length)];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const hue = i / count;
+      const color = new THREE.Color();
+      color.setHSL(0.58 - hue * 0.15, 0.65, 0.6);
+      const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 });
+      const line = new THREE.Line(geo, mat);
+      rayGroup.add(line);
+    }
+  }
+  buildRays(120);
+
+  const slider = document.getElementById('ray-count');
+  const out = document.getElementById('ray-count-out');
+  slider.addEventListener('input', () => {
+    out.textContent = slider.value;
+    buildRays(parseInt(slider.value, 10));
+  });
+
+  // Drag to rotate
+  let isDragging = false, prevX = 0, prevY = 0;
+  let rotX = 0, rotY = 0;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    isDragging = true;
+    prevX = e.clientX;
+    prevY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointerup', () => { isDragging = false; });
+  canvas.addEventListener('pointercancel', () => { isDragging = false; });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevX, dy = e.clientY - prevY;
+    prevX = e.clientX;
+    prevY = e.clientY;
+    rotY += dx * 0.008;
+    rotX += dy * 0.008;
+    rotX = Math.max(-1.5, Math.min(1.5, rotX));
+  });
+
+  let zoom = 12;
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoom += e.deltaY * 0.01;
+    zoom = Math.max(3, Math.min(30, zoom));
+  }, { passive: false });
+
+  let autoRot = 0;
+  function animate() {
+    requestAnimationFrame(animate);
+    if (!isDragging) {
+      autoRot += 0.0018;
+    }
+    const totalY = rotY + autoRot;
+    camera.position.x = zoom * Math.sin(totalY) * Math.cos(rotX);
+    camera.position.z = zoom * Math.cos(totalY) * Math.cos(rotX);
+    camera.position.y = zoom * Math.sin(rotX);
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+</script>
+
+</body>
+</html>
